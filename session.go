@@ -23,6 +23,7 @@ type Session struct {
 func Accept(remoteAddress string, conn io.ReadWriteCloser, handler Handler, hostname string) {
 	defer conn.Close()
 
+	// TODO: take a look at https://github.com/mailhog/MailHog-MTA/blob/master/smtp/session.go#L158
 	proto := smtp.NewProtocol()
 	proto.Hostname = hostname
 
