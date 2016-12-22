@@ -1,7 +1,7 @@
 Go SMTP Server
 ==============
 
-Package `smtp` provides a simple wrapper around MailHog's SMTP server
+Package `smtp` provides a simple wrapper around [MailHog](https://github.com/mailhog/MailHog)'s SMTP server
 written in a style that's hopefully reminiscent of `net/http`. Most of the
 code is adapted from [MailHog-Server's smtp package](https://github.com/mailhog/MailHog-Server/tree/master/smtp).
 
