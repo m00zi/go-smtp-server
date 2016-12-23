@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"crypto/tls"
 	"io"
 	"log"
 	"net"
@@ -11,6 +12,8 @@ import (
 // A server defines the parameters for running an SMTP server.
 type Server struct {
 	Addr     string  // Address to listen on
+	CertFile string  // Certificate file to load
+	KeyFile  string  // Key file to load
 	Hostname string  // Hostname to report in SMTP, defaults to Addr
 	Handler  Handler // Handler
 }
@@ -49,6 +52,20 @@ func (server Server) Listen() {
 	}
 	defer ln.Close()
 
+	var tlsConfig *tls.Config
+	if server.CertFile != "" && server.KeyFile != "" {
+		certificate, err := tls.LoadX509KeyPair(server.CertFile, server.KeyFile)
+		if err != nil {
+			log.Printf("[SMTP] Failed to load cert: %s\n", err)
+
+		} else {
+			tlsConfig = &tls.Config{
+				Certificates: []tls.Certificate{certificate},
+			}
+			log.Printf("[SMTP] Loaded cert: %s\n", server.CertFile)
+		}
+	}
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -61,6 +78,7 @@ func (server Server) Listen() {
 			io.ReadWriteCloser(conn),
 			handler,
 			hostname,
+			tlsConfig,
 		)
 	}
 }

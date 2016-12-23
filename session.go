@@ -1,8 +1,10 @@
 package smtp
 
 import (
+	"crypto/tls"
 	"io"
 	"log"
+	"net"
 	"strings"
 
 	"github.com/mailhog/data"
@@ -17,25 +19,52 @@ type Session struct {
 	remoteAddress string
 	isTLS         bool
 	line          string
+	tlsConfig     *tls.Config
 }
 
 // Accept starts a new SMTP session using io.ReadWriteCloser
-func Accept(remoteAddress string, conn io.ReadWriteCloser, handler Handler, hostname string) {
+func Accept(
+	remoteAddress string,
+	conn io.ReadWriteCloser,
+	handler Handler,
+	hostname string,
+	tlsConfig *tls.Config,
+) {
 	defer conn.Close()
 
-	// TODO: take a look at https://github.com/mailhog/MailHog-MTA/blob/master/smtp/session.go#L158
 	proto := smtp.NewProtocol()
 	proto.Hostname = hostname
 
-	session := &Session{conn, proto, handler, remoteAddress, false, ""}
+	session := &Session{conn, proto, handler, remoteAddress, false, "", tlsConfig}
 	proto.MessageReceivedHandler = session.acceptMessage
 	proto.GetAuthenticationMechanismsHandler = func() []string { return []string{"PLAIN"} }
+	if tlsConfig != nil {
+		proto.TLSHandler = session.tlsHandler
+	}
 
 	session.logf("Starting session")
 	session.Write(proto.Start())
 	for session.Read() == true {
 	}
 	session.logf("Session ended")
+}
+
+func (c *Session) tlsHandler(done func(ok bool)) (errorReply *smtp.Reply, callback func(), ok bool) {
+	c.logf("Returning TLS handler")
+	return nil, func() {
+		c.logf("Upgrading session to TLS")
+		tConn := tls.Server(c.conn.(net.Conn), c.tlsConfig)
+		err := tConn.Handshake()
+		if err != nil {
+			c.logf("handshake error in TLS connection: %s", err)
+			done(false)
+			return
+		}
+		c.conn = tConn
+		c.isTLS = true
+		c.logf("Session upgrade complete")
+		done(true)
+	}, true
 }
 
 func (c *Session) acceptMessage(msg *data.SMTPMessage) (id string, err error) {
