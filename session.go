@@ -98,4 +98,7 @@ func (c *Session) Write(reply *smtp.Reply) {
 		c.logf("Sent %d bytes: '%s'", len(l), logText)
 		c.conn.Write([]byte(l))
 	}
+	if reply.Done != nil {
+		reply.Done()
+	}
 }
