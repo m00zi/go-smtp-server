@@ -27,7 +27,7 @@ type Message *data.Message
 // reads emails, using server.Hostname within SMTP, and calling
 // server.Handler for every email successfully recieved. Listen always
 // returns a non-nil error.
-func (server Server) Listen() {
+func (server Server) Listen() error {
 	addr := server.Addr
 	if addr == "" {
 		addr = ":2500"
@@ -48,7 +48,8 @@ func (server Server) Listen() {
 	log.Printf("[SMTP] Binding to address: %s\n", addr)
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("[SMTP] Error listening on socket: %s\n", err)
+		log.Printf("[SMTP] Error listening on socket: %s\n", err)
+		return err
 	}
 	defer ln.Close()
 

@@ -23,5 +23,5 @@ func main() {
 		},
 	}
 
-	server.Listen()
+	log.Fatal(server.Listen())
 }
