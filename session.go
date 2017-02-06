@@ -11,8 +11,8 @@ import (
 	"github.com/mailhog/smtp"
 )
 
-// Session represents a SMTP session using net.TCPConn
-type Session struct {
+// session represents a SMTP session using net.TCPConn
+type session struct {
 	conn          io.ReadWriteCloser
 	proto         *smtp.Protocol
 	handler       Handler
@@ -35,81 +35,81 @@ func Accept(
 	proto := smtp.NewProtocol()
 	proto.Hostname = hostname
 
-	session := &Session{conn, proto, handler, remoteAddress, false, "", tlsConfig}
-	proto.MessageReceivedHandler = session.acceptMessage
+	s := &session{conn, proto, handler, remoteAddress, false, "", tlsConfig}
+	proto.MessageReceivedHandler = s.acceptMessage
 	proto.GetAuthenticationMechanismsHandler = func() []string { return []string{"PLAIN"} }
 	if tlsConfig != nil {
-		proto.TLSHandler = session.tlsHandler
+		proto.TLSHandler = s.tlsHandler
 	}
 
-	session.logf("Starting session")
-	session.Write(proto.Start())
-	for session.Read() == true {
+	s.logf("Starting session")
+	s.write(proto.Start())
+	for s.read() == true {
 	}
-	session.logf("Session ended")
+	s.logf("Session ended")
 }
 
-func (c *Session) tlsHandler(done func(ok bool)) (errorReply *smtp.Reply, callback func(), ok bool) {
-	c.logf("Returning TLS handler")
+func (s *session) tlsHandler(done func(ok bool)) (errorReply *smtp.Reply, callback func(), ok bool) {
+	s.logf("Returning TLS handler")
 	return nil, func() {
-		c.logf("Upgrading session to TLS")
-		tConn := tls.Server(c.conn.(net.Conn), c.tlsConfig)
+		s.logf("Upgrading session to TLS")
+		tConn := tls.Server(s.conn.(net.Conn), s.tlsConfig)
 		err := tConn.Handshake()
 		if err != nil {
-			c.logf("handshake error in TLS connection: %s", err)
+			s.logf("handshake error in TLS connection: %s", err)
 			done(false)
 			return
 		}
-		c.conn = tConn
-		c.isTLS = true
-		c.logf("Session upgrade complete")
+		s.conn = tConn
+		s.isTLS = true
+		s.logf("Session upgrade complete")
 		done(true)
 	}, true
 }
 
-func (c *Session) acceptMessage(msg *data.SMTPMessage) (id string, err error) {
-	m := msg.Parse(c.proto.Hostname)
-	c.logf("Storing message %s", m.ID)
-	return string(m.ID), c.handler(m)
+func (s *session) acceptMessage(msg *data.SMTPMessage) (id string, err error) {
+	m := msg.Parse(s.proto.Hostname)
+	s.logf("Storing message %s", m.ID)
+	return string(m.ID), s.handler(m)
 }
 
-func (c *Session) logf(message string, args ...interface{}) {
+func (s *session) logf(message string, args ...interface{}) {
 	message = strings.Join([]string{"[SMTP %s]", message}, " ")
-	args = append([]interface{}{c.remoteAddress}, args...)
+	args = append([]interface{}{s.remoteAddress}, args...)
 	log.Printf(message, args...)
 }
 
-// Read reads from the underlying net.TCPConn
-func (c *Session) Read() bool {
+// read reads from the underlying net.TCPConn
+func (s *session) read() bool {
 	buf := make([]byte, 1024)
-	n, err := c.conn.Read(buf)
+	n, err := s.conn.Read(buf)
 
 	if n == 0 {
-		c.logf("Connection closed by remote host\n")
-		c.conn.Close() // not sure this is necessary?
+		s.logf("Connection closed by remote host\n")
+		s.conn.Close() // not sure this is necessary?
 		return false
 	}
 
 	if err != nil {
-		c.logf("Error reading from socket: %s\n", err)
+		s.logf("Error reading from socket: %s\n", err)
 		return false
 	}
 
 	text := string(buf[0:n])
 	logText := strings.Replace(text, "\n", "\\n", -1)
 	logText = strings.Replace(logText, "\r", "\\r", -1)
-	c.logf("Received %d bytes: '%s'\n", n, logText)
+	s.logf("Received %d bytes: '%s'\n", n, logText)
 
-	c.line += text
+	s.line += text
 
-	for strings.Contains(c.line, "\r\n") {
-		line, reply := c.proto.Parse(c.line)
-		c.line = line
+	for strings.Contains(s.line, "\r\n") {
+		line, reply := s.proto.Parse(s.line)
+		s.line = line
 
 		if reply != nil {
-			c.Write(reply)
+			s.write(reply)
 			if reply.Status == 221 {
-				io.Closer(c.conn).Close()
+				io.Closer(s.conn).Close()
 				return false
 			}
 		}
@@ -119,13 +119,13 @@ func (c *Session) Read() bool {
 }
 
 // Write writes a reply to the underlying net.TCPConn
-func (c *Session) Write(reply *smtp.Reply) {
+func (s *session) write(reply *smtp.Reply) {
 	lines := reply.Lines()
 	for _, l := range lines {
 		logText := strings.Replace(l, "\n", "\\n", -1)
 		logText = strings.Replace(logText, "\r", "\\r", -1)
-		c.logf("Sent %d bytes: '%s'", len(l), logText)
-		c.conn.Write([]byte(l))
+		s.logf("Sent %d bytes: '%s'", len(l), logText)
+		s.conn.Write([]byte(l))
 	}
 	if reply.Done != nil {
 		reply.Done()
