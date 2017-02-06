@@ -10,6 +10,6 @@ Run:
 
 `go run examples/tls/main.go -addr=:1025 -cert-file=selfsigned.crt -key-file=selfsigned.key`
 
-Test the server using any client. For example, (swaks)[http://www.jetmore.org/john/code/swaks/]:
+Test the server using any client. For example, [swaks](http://www.jetmore.org/john/code/swaks/):
 
 `swaks --to whatever@localhost --server localhost:1025 --tls`
