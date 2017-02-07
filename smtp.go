@@ -74,7 +74,7 @@ func (server Server) Listen() error {
 			continue
 		}
 
-		go Accept(
+		go accept(
 			conn.(*net.TCPConn).RemoteAddr().String(),
 			io.ReadWriteCloser(conn),
 			handler,

@@ -23,7 +23,7 @@ type session struct {
 }
 
 // Accept starts a new SMTP session using io.ReadWriteCloser
-func Accept(
+func accept(
 	remoteAddress string,
 	conn io.ReadWriteCloser,
 	handler Handler,
