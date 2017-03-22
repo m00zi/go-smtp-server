@@ -2,6 +2,8 @@ package smtp
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -13,31 +15,47 @@ import (
 
 // session represents a SMTP session using net.TCPConn
 type session struct {
-	conn          io.ReadWriteCloser
-	proto         *smtp.Protocol
-	handler       Handler
-	remoteAddress string
-	isTLS         bool
-	line          string
-	tlsConfig     *tls.Config
+	conn             io.ReadWriteCloser
+	proto            *smtp.Protocol
+	handler          Handler
+	authenticate     Authenticate
+	remoteAddress    string
+	isTLS            bool
+	line             string
+	tlsConfig        *tls.Config
+	logf             func(message string, args ...interface{})
+	hasAuthenticated bool
 }
+
+func blackholeLogger(message string, args ...interface{}) {}
 
 // Accept starts a new SMTP session using io.ReadWriteCloser
 func accept(
 	remoteAddress string,
 	conn io.ReadWriteCloser,
 	handler Handler,
+	authenticate Authenticate,
 	hostname string,
 	tlsConfig *tls.Config,
+	debug bool,
 ) {
 	defer conn.Close()
 
 	proto := smtp.NewProtocol()
 	proto.Hostname = hostname
 
-	s := &session{conn, proto, handler, remoteAddress, false, "", tlsConfig}
+	s := &session{conn, proto, handler, authenticate, remoteAddress, false, "", tlsConfig, blackholeLogger, false}
+	if debug {
+		s.logf = s.debugLogger
+	}
+
+	proto.LogHandler = s.logf
 	proto.MessageReceivedHandler = s.acceptMessage
-	proto.GetAuthenticationMechanismsHandler = func() []string { return []string{"PLAIN"} }
+	proto.SMTPVerbFilter = s.verbFilter
+	if s.authenticate != nil {
+		proto.GetAuthenticationMechanismsHandler = func() []string { return []string{"PLAIN"} }
+		proto.ValidateAuthenticationHandler = s.plainAuthHandler
+	}
 	if tlsConfig != nil {
 		proto.TLSHandler = s.tlsHandler
 	}
@@ -73,7 +91,39 @@ func (s *session) acceptMessage(msg *data.SMTPMessage) (id string, err error) {
 	return string(m.ID), s.handler(m)
 }
 
-func (s *session) logf(message string, args ...interface{}) {
+func (s *session) verbFilter(verb string, args ...string) *smtp.Reply {
+	if s.authenticate != nil && !s.hasAuthenticated {
+		switch verb {
+		case "MAIL":
+			return smtp.ReplyError(errors.New("must be authenticated"))
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+func (s *session) plainAuthHandler(mechanism string, args ...string) (*smtp.Reply, bool) {
+	if mechanism != "PLAIN" {
+		return smtp.ReplyError(errors.New(fmt.Sprintf(
+			"%q is not a supported AUTH mechanism",
+			mechanism,
+		))), false
+	}
+	if len(args) < 2 {
+		return smtp.ReplyError(errors.New(
+			"must provide a username and password",
+		)), false
+	}
+	err := s.authenticate(args[0], args[1])
+	if err != nil {
+		return smtp.ReplyError(err), false
+	}
+	s.hasAuthenticated = true
+	return nil, true
+}
+
+func (s *session) debugLogger(message string, args ...interface{}) {
 	message = strings.Join([]string{"[SMTP %s]", message}, " ")
 	args = append([]interface{}{s.remoteAddress}, args...)
 	log.Printf(message, args...)

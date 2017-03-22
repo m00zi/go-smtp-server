@@ -11,13 +11,16 @@ import (
 
 // A server defines the parameters for running an SMTP server.
 type Server struct {
-	Addr     string  // Address to listen on
-	CertFile string  // Certificate file to load
-	KeyFile  string  // Key file to load
-	Hostname string  // Hostname to report in SMTP, defaults to Addr
-	Handler  Handler // Handler
+	Addr         string       // Address to listen on
+	CertFile     string       // Certificate file to load
+	Debug        bool         // Toggles debug output on/off
+	KeyFile      string       // Key file to load
+	Hostname     string       // Hostname to report in SMTP, defaults to Addr
+	Handler      Handler      // Handler
+	Authenticate Authenticate // Runs before Handler to authenticate
 }
 
+type Authenticate func(username, password string) error
 type Handler func(Message) error
 
 // Alias of mailhog's Message
@@ -78,8 +81,10 @@ func (server Server) Listen() error {
 			conn.(*net.TCPConn).RemoteAddr().String(),
 			io.ReadWriteCloser(conn),
 			handler,
+			server.Authenticate,
 			hostname,
 			tlsConfig,
+			server.Debug,
 		)
 	}
 }
